@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pi-EGT
+Comment=Boat Instrument Panel (EGT)
+Exec=bash -c 'sleep 8 && cd /home/pi/pi-egt && DISPLAY=:0 python3 main.py'
+Icon=utilities-system
+Terminal=false
+Categories=Utility;
+StartupNotify=false

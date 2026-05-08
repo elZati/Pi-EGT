@@ -1,0 +1,10 @@
+# Core UI
+PyQt5>=5.15
+
+# Network (weather + geocoding)
+requests>=2.28
+
+# ── Raspberry Pi only ─────────────────────────────────────────────────────────
+# Uncomment / install on the Pi:
+# spidev>=3.5
+# RPi.GPIO>=0.7.0
