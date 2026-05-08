@@ -1,0 +1,11 @@
+# KiCad auto-backups and lock files
+*-backups/
+*.lck
+~*.lck
+
+# KiCad internal version history
+.history/
+
+# KiCad cache / local prefs
+fp-info-cache
+*.kicad_prl
