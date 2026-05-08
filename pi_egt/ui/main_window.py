@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 import time
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
@@ -101,6 +103,19 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(10_000, self._start_net_fetch)
 
         self._fetch_thread: FetchThread | None = None
+
+        # Hardware watchdog — keep Pi alive; feeds every 10 s (matches CPU timer)
+        # /dev/watchdog times out after ~60 s if not fed → Pi reboots
+        try:
+            self._hw_watchdog = open('/dev/watchdog', 'wb', buffering=0)
+        except OSError:
+            self._hw_watchdog = None   # not on Pi, or watchdog not enabled
+
+        # Software watchdog — restarts the process if sensor polling stalls
+        self._last_poll_time = time.monotonic()
+        self._sw_watchdog_timer = QTimer(self)
+        self._sw_watchdog_timer.timeout.connect(self._check_sw_watchdog)
+        self._sw_watchdog_timer.start(15_000)   # check every 15 s
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -215,6 +230,8 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _check_cpu_temp(self) -> None:
+        self._feed_hw_watchdog()
+
         try:
             with open('/sys/class/thermal/thermal_zone0/temp') as f:
                 cpu_c = int(f.read().strip()) / 1000.0
@@ -230,10 +247,45 @@ class MainWindow(QMainWindow):
             self._sensor_timer.stop()
             self._sensor_timer.start(config.SENSOR_POLL_FAST_MS)
 
+    def _feed_hw_watchdog(self) -> None:
+        if self._hw_watchdog is not None:
+            try:
+                self._hw_watchdog.write(b'\x01')
+            except OSError:
+                pass
+
+    # ── Software watchdog ─────────────────────────────────────────────────────
+
+    @pyqtSlot()
+    def _check_sw_watchdog(self) -> None:
+        elapsed = time.monotonic() - self._last_poll_time
+        if elapsed > config.WATCHDOG_POLL_TIMEOUT_S:
+            self._restart()
+
+    def _restart(self) -> None:
+        """In-process restart — replaces the current process image."""
+        self._sw_watchdog_timer.stop()
+        self._sensor_timer.stop()
+        self._cpu_timer.stop()
+        self._net_timer.stop()
+        self._net_retry_timer.stop()
+        self._buzzer.cleanup()
+        # Disarm hardware watchdog so reboot doesn't trigger during execv
+        if self._hw_watchdog is not None:
+            try:
+                self._hw_watchdog.write(b'V')
+                self._hw_watchdog.close()
+            except OSError:
+                pass
+            self._hw_watchdog = None
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
     # ── Sensor polling ────────────────────────────────────────────────────────
 
     @pyqtSlot()
     def _poll_sensors(self) -> None:
+        self._last_poll_time = time.monotonic()
+
         egt = self._egt.read_celsius()
         self._gauge.set_temperature(egt, fault=(egt is None))
         self._histogram.add_reading(egt)
@@ -409,6 +461,7 @@ class MainWindow(QMainWindow):
     # ── Cleanup ───────────────────────────────────────────────────────────────
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        self._sw_watchdog_timer.stop()
         self._sensor_timer.stop()
         self._cpu_timer.stop()
         self._net_timer.stop()
@@ -416,4 +469,11 @@ class MainWindow(QMainWindow):
         if self._fetch_thread:
             self._fetch_thread.wait(3_000)
         self._buzzer.cleanup()
+        # Disarm hardware watchdog — 'V' is the magic disarm byte
+        if self._hw_watchdog is not None:
+            try:
+                self._hw_watchdog.write(b'V')
+                self._hw_watchdog.close()
+            except OSError:
+                pass
         super().closeEvent(event)

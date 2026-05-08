@@ -31,6 +31,7 @@ WEATHER_POLL_MS = 15 * 60_000    # 15 min
 CPU_TEMP_THROTTLE_C = 70.0       # °C — throttle above this
 CPU_TEMP_RECOVER_C  = 65.0       # °C — restore fast rate below this (hysteresis)
 AMB_SENSOR_TIMEOUT_S = 15.0      # seconds without data before hiding an ambient tile
+WATCHDOG_POLL_TIMEOUT_S = 60.0   # seconds — software watchdog triggers in-process restart
 
 # ── Lightning risk thresholds (CAPE in J/kg) ─────────────────────────────────
 CAPE_MODERATE = 500
